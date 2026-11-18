@@ -10,7 +10,7 @@ With Node.js 24 installed, run `node dev.mjs` from this directory and open [Quiz
 2. In a second tab, choose **Join a quiz** and enter the six-digit code and a nickname.
 3. In the host tab, start the quiz. Each reveal shows the response counts and the host can see individual choices. **Next: leaderboard** shows the five highest-scoring participants and rank changes from the previous question.
 
-Set a time limit of 5 to 300 seconds on any question in the quiz builder. Before hosting, use **Set time by question** to review or change the limits for that room, including for the sample quizzes. Blank limits use the room default in live play or 15 seconds in timed solo play.
+Set each question’s time limit in the quiz builder. Limits range from 5 to 300 seconds and start at 20 seconds for new questions. Live games and timed solo practice use the saved limits. Sample questions and older questions without a saved limit use 20 seconds.
 
 Use **Question image (optional)** to attach a JPG, PNG, or WebP file up to 12 MB. QuizPop resizes the image for play and saves it with the question. The host and participants see the image during the question.
 
