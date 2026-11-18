@@ -323,10 +323,37 @@
     .answer.picked { background: #efebff; border-color: #ab91e8; }
     .leaderboard { margin-top: 16px; }
     .leaderboard ol { margin: 12px 0 0; padding: 0; list-style: none; }
-    .leaderboard li { display: grid; grid-template-columns: 2.4ch 1fr auto; gap: 11px; padding: 8px 5px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .leaderboard li { display: grid; grid-template-columns: 2.4ch minmax(0, 1fr) auto minmax(3ch, auto); gap: 11px; padding: 11px 5px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
     .leaderboard li:last-child { border: 0; }
     .leaderboard .you { background: #f2edff; border-radius: 6px; }
     .leaderboard .rank { color: var(--muted); text-align: right; }
+    .rank-shift { text-align: right; font-weight: 740; color: var(--muted); white-space: nowrap; }
+    .rank-shift.up { color: #25714a; }
+    .rank-shift.down { color: #992f4e; }
+    .question-image { display: block; margin: 14px auto 0; max-width: 100%; max-height: 340px; object-fit: contain; border-radius: 8px; }
+    .image-editor { display: grid; gap: 8px; margin-top: 15px; }
+    .image-editor input[type="file"] { width: 100%; max-width: 400px; color: var(--muted); }
+    .image-editor input::file-selector-button { margin-right: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: #f3effc; color: var(--purple-dark); font: inherit; cursor: pointer; }
+    .image-editor .question-image { max-height: 150px; margin: 2px 0; }
+    .image-editor .button { justify-self: start; }
+    .image-message { color: var(--muted); font-size: .88rem; }
+    .image-message:empty { display: none; }
+    .distribution { margin-top: 16px; }
+    .distribution h2, .student-answers summary { font-weight: 760; font-size: 1.12rem; }
+    .distribution-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(5px, 1.7vw, 14px); margin-top: 12px; }
+    .distribution-cell { text-align: center; overflow-wrap: anywhere; }
+    .distribution-plot { position: relative; height: 143px; display: flex; align-items: end; justify-content: center; }
+    .distribution-bar { width: 100%; height: var(--bar-height); border-radius: 8px 8px 0 0; background: var(--bar); }
+    .distribution-count { position: absolute; inset-inline: 0; bottom: calc(var(--bar-height) + 4px); font-weight: 780; font-variant-numeric: tabular-nums; }
+    .distribution-letter { display: block; padding-block: 5px; background: var(--bar); border-top: 1px solid #ffffff60; border-radius: 0 0 7px 7px; color: white; font-weight: 780; }
+    .distribution-option { display: block; margin-top: 6px; font-size: .86rem; line-height: 1.3; }
+    .distribution-correct { display: block; font-size: .76rem; color: #256344; font-weight: 750; }
+    .distribution-note { margin-top: 12px; color: var(--muted); font-size: .88rem; }
+    .student-answers { margin-top: 13px; }
+    .student-answers summary { cursor: pointer; }
+    .student-answers ul { max-height: 280px; overflow: auto; list-style: none; padding: 0; margin: 9px 0 0; }
+    .student-answers li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px; padding-block: 7px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .student-answers li span { color: var(--muted); }
     .room-finish { display: grid; gap: 9px; }
     .room-status { margin-top: 12px; color: var(--muted); min-height: 1.5em; line-height: 1.5; }
     .room-status:empty { display: none; }
@@ -437,6 +464,8 @@
     const soloDefaultSeconds = 15;
     const minQuestionSeconds = 5;
     const maxQuestionSeconds = 300;
+    const maxImageBytes = 64 * 1024;
+    const imagePattern = /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/;
     const timeInputLimits = `type="number" inputmode="numeric" min="${minQuestionSeconds}" max="${maxQuestionSeconds}" step="1"`;
     const maxQuestions = 20;
     const letters = ["A", "B", "C", "D"];
@@ -472,7 +501,8 @@
             Number.isInteger(question[2]) && question[2] >= 0 && question[2] < 4 &&
             typeof question[3] === "string" &&
             (question[4] == null || (Number.isInteger(question[4]) &&
-              question[4] >= minQuestionSeconds && question[4] <= maxQuestionSeconds))
+              question[4] >= minQuestionSeconds && question[4] <= maxQuestionSeconds)) &&
+            (question[5] == null || validImage(question[5]))
           )
         ).map(quiz => ({
           id: quiz.id,
@@ -492,7 +522,7 @@
         localStorage.setItem(storageKey, JSON.stringify(customQuizzes));
         return "";
       } catch {
-        return "Browser storage is unavailable. Changes will last until you close or refresh this page.";
+        return "Browser storage is full or unavailable. Changes will last until you close or refresh this page.";
       }
     }
 
@@ -580,7 +610,7 @@
 
     function showQuestion() {
       stopClock();
-      const [prompt, options, , , limit] = game.quiz.questions[game.index];
+      const [prompt, options, , , limit, image] = game.quiz.questions[game.index];
       const seconds = limit ?? soloDefaultSeconds;
       game.duration = seconds * 1000;
       const count = game.quiz.questions.length;
@@ -600,6 +630,7 @@
           <div class="question-panel">
             <p class="game-name">${escapeHtml(game.quiz.title)}</p>
             <h1 id="question-title" tabindex="-1">${escapeHtml(prompt)}</h1>
+            ${image ? `<img class="question-image" src="${escapeHtml(image)}" alt="Image for this question">` : ""}
           </div>
           <div class="answers" role="group" aria-label="Answers">
             ${options.map((option, index) => `
@@ -759,7 +790,7 @@
       const list = app.querySelector("#editor-questions");
       if (list.children.length >= maxQuestions) return;
 
-      const [prompt, options, correct, explanation, seconds] = question;
+      const [prompt, options, correct, explanation, seconds, image] = question;
       const row = nextEditorRow++;
       list.insertAdjacentHTML("beforeend", `
         <fieldset class="editor-question">
@@ -785,6 +816,15 @@
           <label class="field question-time-field">Time limit (seconds)
             <input ${timeInputLimits} data-field="seconds" value="${seconds ?? ""}" placeholder="Use default">
           </label>
+          <div class="image-editor">
+            <label class="field">Question image (optional)
+              <input type="file" data-field="image-file" accept="image/jpeg,image/png,image/webp">
+            </label>
+            <input type="hidden" data-field="image" value="${escapeHtml(image ?? "")}">
+            <img class="question-image" data-field="image-preview" alt="Question image preview" ${image ? `src="${escapeHtml(image)}"` : "hidden"}>
+            <p class="image-message" role="status"></p>
+            <button type="button" class="button outline" data-action="remove-image" ${image ? "" : "hidden"}>Remove image</button>
+          </div>
           <div class="editor-tools">
             <button type="button" class="button danger" data-action="remove-question">Remove question</button>
           </div>
@@ -802,6 +842,82 @@
       const addButton = app.querySelector("[data-action='add-question']");
       addButton.disabled = rows.length >= maxQuestions;
       addButton.lastChild.textContent = addButton.disabled ? ` ${maxQuestions}-question limit` : " Add question";
+      app.querySelector("#quiz-form button[type='submit']").disabled = rows.some(row => row.hasAttribute("data-image-loading"));
+    }
+
+    function validImage(source) {
+      return typeof source === "string" && source.length <= 23 + 4 * Math.ceil(maxImageBytes / 3) && imagePattern.test(source);
+    }
+
+    async function resizeQuestionImage(file) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 12 * 1024 * 1024) {
+        throw new Error("Choose a JPG, PNG, or WebP image up to 12 MB.");
+      }
+      const bitmap = await createImageBitmap(file);
+      try {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d", { alpha: false });
+        const scale = Math.min(1, 1000 / Math.max(bitmap.width, bitmap.height));
+        for (const [size, quality] of [[1, .88], [1, .69], [.8, .72], [.63, .67], [.48, .56]]) {
+          canvas.width = Math.max(1, Math.round(bitmap.width * scale * size));
+          canvas.height = Math.max(1, Math.round(bitmap.height * scale * size));
+          context.fillStyle = "#fff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+          if (blob && blob.size <= maxImageBytes) {
+            return await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+          }
+        }
+        throw new Error("Choose a smaller image for this question.");
+      } finally {
+        bitmap.close();
+      }
+    }
+
+    function setEditorImage(row, source) {
+      const preview = row.querySelector("[data-field='image-preview']");
+      row.querySelector("[data-field='image']").value = source;
+      if (source) preview.src = source;
+      else preview.removeAttribute("src");
+      preview.hidden = !source;
+      row.querySelector("[data-action='remove-image']").hidden = !source;
+    }
+
+    async function uploadQuestionImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const row = input.closest(".editor-question");
+      const message = row.querySelector(".image-message");
+      const remove = row.querySelector("[data-action='remove-image']");
+      input.value = "";
+      input.disabled = true;
+      remove.disabled = true;
+      row.setAttribute("data-image-loading", "");
+      message.textContent = "Preparing image…";
+      refreshEditorButtons();
+      try {
+        const source = await resizeQuestionImage(file);
+        if (!validImage(source)) throw new Error("Choose a different image.");
+        if (row.isConnected) {
+          setEditorImage(row, source);
+          message.textContent = "";
+        }
+      } catch (error) {
+        if (row.isConnected) message.textContent = error instanceof DOMException ? "This image couldn’t be opened." : error.message;
+      } finally {
+        if (row.isConnected) {
+          row.removeAttribute("data-image-loading");
+          input.disabled = false;
+          remove.disabled = false;
+          refreshEditorButtons();
+        }
+      }
     }
 
     function saveQuiz(form) {
@@ -826,7 +942,8 @@
           [...row.querySelectorAll("[data-field='choice']")].map(input => input.value.trim()),
           Number(row.querySelector("input[type='radio']:checked").value),
           row.querySelector("[data-field='explanation']").value.trim(),
-          row.querySelector("[data-field='seconds']").valueAsNumber || null
+          row.querySelector("[data-field='seconds']").valueAsNumber || null,
+          row.querySelector("[data-field='image']").value || null
         ])
       };
 
@@ -918,7 +1035,7 @@
     async function roomRequest(path, token, data) {
       if (!roomApi || location.protocol === "file:") throw new Error("Open the hosted QuizPop site or run the local server to play a live quiz.");
       const headers = { Authorization: `Bearer ${token}` };
-      const options = { headers, cache: "no-store", signal: AbortSignal.timeout(8000) };
+      const options = { headers, cache: "no-store", signal: AbortSignal.timeout(path === "" ? 20000 : 8000) };
       if (data !== undefined) {
         headers["Content-Type"] = "application/json";
         options.method = "POST";
@@ -953,7 +1070,7 @@
         if (setup.role === "host") {
           const { title, questions } = findQuiz(fields.get("quiz"));
           const times = fields.getAll("question-seconds");
-          const quiz = { title, questions: questions.map((question, index) => [...question.slice(0, 4), Number(times[index]) || null]) };
+          const quiz = { title, questions: questions.map((question, index) => [...question.slice(0, 4), Number(times[index]) || null, question[5] ?? null]) };
           result = await roomRequest("", setup.token, { quiz, seconds: Number(fields.get("seconds")) });
         } else {
           const code = fields.get("code").replace(/[\s-]/g, "");
@@ -1008,11 +1125,12 @@
         const { serverTime, ...visible } = state;
         const signature = JSON.stringify(visible);
         if (signature !== view.signature) {
-          const newScreen = state.phase !== view.state?.phase || state.index !== view.state?.index;
+          const newScreen = state.phase !== view.state?.phase || state.index !== view.state?.index || state.ranking !== view.state?.ranking;
           view.state = state;
           view.signature = signature;
           renderRoom(view, newScreen);
         }
+        updateRoomImage(view);
         if (view.offline) {
           setRoomStatus("");
           view.offline = false;
@@ -1069,26 +1187,78 @@
 
     function boardMarkup(state) {
       return `
-        <section class="builder-panel leaderboard" aria-label="Leaderboard">
-          <h2>Leaderboard</h2>
-          <ol>${state.leaderboard.map((player, index) => `
-            <li class="${player.you ? "you" : ""}">
-              <span class="rank" aria-hidden="true">${index + 1}</span>
-              <span>${escapeHtml(player.nickname)}${player.you ? " (you)" : ""}</span>
-              <strong>${player.score.toLocaleString()} pts</strong>
-            </li>`).join("")}</ol>
+        <section class="builder-panel leaderboard" aria-label="Top five">
+          ${state.phase === "finished" ? "<h2>Top five</h2>" : ""}
+          <ol>${state.leaderboard.map((player, index) => {
+            const delta = player.movement;
+            const direction = delta > 0 ? "up" : "down";
+            const shift = delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)}` : delta == null ? "New" : "—";
+            const shiftLabel = delta ? `${direction} ${Math.abs(delta)} ${Math.abs(delta) === 1 ? "place" : "places"}` : delta == null ? "First ranking" : "No change";
+            return `
+              <li class="${player.you ? "you" : ""}">
+                <span class="rank">${player.rank ?? index + 1}</span>
+                <span>${escapeHtml(player.nickname)}${player.you ? " (you)" : ""}</span>
+                <strong>${player.score.toLocaleString()} pts</strong>
+                <span class="rank-shift ${delta ? direction : ""}" aria-label="${shiftLabel}">${shift}</span>
+              </li>`;
+          }).join("")}</ol>
+          ${state.yourRank > 5 ? `<p class="screen-subtitle">Your rank is ${state.yourRank}.</p>` : ""}
         </section>`;
+    }
+
+    function distributionMarkup(state) {
+      if (!state.distribution) return "";
+      const { counts, unanswered } = state.distribution;
+      const { options, correct } = state.question;
+      const peak = Math.max(1, ...counts);
+      const colors = ["#ae3547", "#375faa", "#9a6111", "#3c783e"];
+      return `
+        <section class="builder-panel distribution" aria-label="Answer distribution">
+          <h2>How the room answered</h2>
+          <div class="distribution-bars">
+            ${counts.map((count, index) => `
+              <div class="distribution-cell" style="--bar:${colors[index]};--bar-height:${Math.max(3, 82 * count / peak)}%">
+                <div class="distribution-plot">
+                  <span class="distribution-count">${count}<span class="visually-hidden"> responses for</span></span>
+                  <span class="distribution-bar" aria-hidden="true"></span>
+                </div>
+                <span class="distribution-letter">${letters[index]}</span>
+                <span class="distribution-option">${escapeHtml(options[index])}</span>
+                ${index === correct ? '<span class="distribution-correct">✓ Correct</span>' : ""}
+              </div>`).join("")}
+          </div>
+          ${unanswered ? `<p class="distribution-note">${unanswered} ${unanswered === 1 ? "player didn’t" : "players didn’t"} answer.</p>` : ""}
+        </section>
+        ${state.responses ? `
+          <details class="builder-panel student-answers" open>
+            <summary>Student answers</summary>
+            <ul>${state.responses.map(({ nickname, choice }) => `
+              <li><strong>${escapeHtml(nickname)}</strong><span>${choice === null ? "No answer" : `${letters[choice]}. ${escapeHtml(options[choice])}`}</span></li>
+            `).join("")}</ul>
+          </details>` : ""}`;
+    }
+
+    function rankingMarkup(state) {
+      return `
+        <div class="room-code-panel room-finish">
+          <h1 class="screen-title" id="room-heading" tabindex="-1">Top five</h1>
+          <p>After question ${state.index + 1} of ${state.total}</p>
+        </div>
+        ${boardMarkup(state)}
+        ${state.role === "host" ? `
+          <div class="game-actions"><button type="button" class="button primary" data-action="advance-room">${state.index + 1 === state.total ? "Finish quiz" : "Next question"}</button></div>` : ""}`;
     }
 
     function roomQuestionMarkup(state) {
       const hosting = state.role === "host";
       const asking = state.phase === "question";
-      const { prompt, options, correct, explanation } = state.question;
+      const { prompt, options, correct, explanation, hasImage } = state.question;
       return `
         ${asking ? '<div class="countdown-track" aria-hidden="true"><div class="countdown-bar" id="room-time-bar"></div></div>' : ""}
         <div class="question-panel">
           <p class="game-name">${escapeHtml(state.title)}</p>
           <h1 id="room-heading" tabindex="-1">${escapeHtml(prompt)}</h1>
+          ${hasImage ? '<img id="room-image" class="question-image" alt="Image for this question" hidden><p id="room-image-status" class="image-message" role="status"></p>' : ""}
         </div>
         <div class="answers" role="group" aria-label="Answers">
           ${options.map((option, index) => {
@@ -1110,9 +1280,8 @@
             <strong>${hosting ? "Correct answer" : state.points ? `Correct! +${state.points.toLocaleString()} points` : state.choice === null ? "No answer submitted" : "Incorrect"}</strong>
             <p>${escapeHtml(options[correct])}${explanation ? ` · ${escapeHtml(explanation)}` : ""}</p>
           </div>
-          ${hosting ? `
-            <div class="game-actions"><button type="button" class="button primary" data-action="advance-room">${state.index + 1 === state.total ? "Show final scores" : "Next question"}</button></div>` : ""}
-          ${boardMarkup(state)}`}`;
+          ${distributionMarkup(state)}
+          ${hosting ? `<div class="game-actions"><button type="button" class="button primary" data-action="advance-room">Next: leaderboard</button></div>` : ""}`}`;
     }
 
     function renderRoom(view, newScreen) {
@@ -1131,7 +1300,7 @@
               ${state.phase === "question" && state.role === "host" ? `<span class="pill">${state.answerCount}/${state.playerCount} answered</span>` : ""}
             </div>
           </div>
-          ${state.phase === "lobby" ? lobbyMarkup(state) : inRound ? roomQuestionMarkup(state) : `
+          ${state.phase === "lobby" ? lobbyMarkup(state) : state.ranking ? rankingMarkup(state) : inRound ? roomQuestionMarkup(state) : `
             <div class="room-code-panel room-finish">
               <h1 class="screen-title" id="room-heading" tabindex="-1">Quiz complete!</h1>
               <p>${escapeHtml(state.title)}</p>
@@ -1144,6 +1313,35 @@
       else if (activeAction && activeAction !== "room-answer") {
         [...app.querySelectorAll("button[data-action]")].find(button => button.dataset.action === activeAction)?.focus({ preventScroll: true });
       }
+    }
+
+    function updateRoomImage(view) {
+      const picture = app.querySelector("#room-image");
+      if (!picture) return;
+      const index = view.state.index;
+      if (view.image?.index !== index) view.image = { index };
+      const asset = view.image;
+      if (asset.source) {
+        if (picture.getAttribute("src") !== asset.source) picture.src = asset.source;
+        picture.hidden = false;
+        app.querySelector("#room-image-status").textContent = "";
+        return;
+      }
+      if (asset.pending || Date.now() < (asset.retryAt ?? 0)) return;
+      asset.pending = true;
+      void roomRequest(`/${view.session.code}/image?index=${index}`, view.session.token).then(({ image }) => {
+        if (!validImage(image)) throw new Error("Invalid question image.");
+        asset.source = image;
+        if (view === roomView && view.image === asset) updateRoomImage(view);
+      }).catch(() => {
+        asset.retryAt = Date.now() + 3000;
+        if (view === roomView && view.image === asset) {
+          const message = app.querySelector("#room-image-status");
+          if (message) message.textContent = "The image is still loading.";
+        }
+      }).finally(() => {
+        asset.pending = false;
+      });
     }
 
     function updateRoomTimer(view) {
@@ -1171,7 +1369,7 @@
     async function roomAction(action, choice) {
       const view = roomView;
       if (!view?.state || view.pending) return;
-      const { phase, index, role, deadline } = view.state;
+      const { phase, index, role, deadline, ranking } = view.state;
       if (action === "answer" && (role !== "player" || phase !== "question" || view.state.choice !== null ||
           view.lockedIndex === index || performance.now() + view.offset >= deadline)) return;
       if (action === "advance" && role !== "host") return;
@@ -1182,7 +1380,7 @@
       if (advance) advance.disabled = true;
       updateRoomTimer(view);
       try {
-        await roomRequest(`/${view.session.code}/${action}`, view.session.token, { index, phase, choice });
+        await roomRequest(`/${view.session.code}/${action}`, view.session.token, { index, phase, choice, ranking: !!ranking });
         if (view === roomView && action === "answer") view.lockedIndex = index;
       } catch (error) {
         if (view === roomView) setRoomStatus(error.message);
@@ -1261,6 +1459,13 @@
         case "add-question":
           addEditorQuestion();
           break;
+        case "remove-image": {
+          const row = button.closest(".editor-question");
+          setEditorImage(row, "");
+          row.querySelector(".image-message").textContent = "";
+          row.querySelector("[data-field='image-file']").focus();
+          break;
+        }
         case "remove-question": {
           const row = button.closest(".editor-question");
           if (app.querySelectorAll(".editor-question").length <= 1) break;
@@ -1284,6 +1489,7 @@
       const input = event.target;
       if (input.id === "timed-mode") timed = input.checked;
       if (input.name === "quiz" && input.form?.id === "room-form") renderRoomTimers(input.form);
+      if (input.dataset.field === "image-file") void uploadQuestionImage(input);
     });
 
     app.addEventListener("invalid", event => {
@@ -1294,7 +1500,7 @@
     app.addEventListener("submit", event => {
       if (event.target.id === "quiz-form") {
         event.preventDefault();
-        saveQuiz(event.target);
+        if (!event.target.querySelector("[data-image-loading]")) saveQuiz(event.target);
       } else if (event.target.id === "room-form") {
         event.preventDefault();
         void submitRoomForm(event.target);
