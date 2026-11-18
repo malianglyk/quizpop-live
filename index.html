@@ -294,6 +294,12 @@
     .room-setup { width: min(100%, 600px); }
     .room-form { display: grid; gap: 16px; margin-top: 20px; }
     .room-form .builder-actions { margin-top: 0; }
+    .question-time-field { max-width: 15rem; }
+    .editor-question .question-time-field { margin-top: 14px; }
+    .question-timers { padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; }
+    .question-timers summary { color: var(--purple-dark); font-weight: 750; cursor: pointer; }
+    .question-timers p { margin-top: 8px; color: var(--muted); font-size: .87rem; line-height: 1.5; }
+    .question-timer-row { display: grid; grid-template-columns: minmax(0, 1fr) 85px; gap: 12px; align-items: center; margin-top: 10px; overflow-wrap: anywhere; }
     .room-pin-input { font-variant-numeric: tabular-nums; letter-spacing: .13em; }
     .room-lobby { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
     .room-code-panel { min-width: 0; padding: clamp(20px, 4vw, 32px); border: 1px solid #ddcef8; border-radius: 23px; background: var(--lavender); }
@@ -428,8 +434,10 @@
     ];
 
     const storageKey = "quizpop.quizzes.v1";
-    const secondsPerQuestion = 15;
-    const duration = secondsPerQuestion * 1000;
+    const soloDefaultSeconds = 15;
+    const minQuestionSeconds = 5;
+    const maxQuestionSeconds = 300;
+    const timeInputLimits = `type="number" inputmode="numeric" min="${minQuestionSeconds}" max="${maxQuestionSeconds}" step="1"`;
     const maxQuestions = 20;
     const letters = ["A", "B", "C", "D"];
     const app = document.querySelector("#app");
@@ -462,7 +470,9 @@
             Array.isArray(question[1]) && question[1].length === 4 &&
             question[1].every(answer => typeof answer === "string") &&
             Number.isInteger(question[2]) && question[2] >= 0 && question[2] < 4 &&
-            typeof question[3] === "string"
+            typeof question[3] === "string" &&
+            (question[4] == null || (Number.isInteger(question[4]) &&
+              question[4] >= minQuestionSeconds && question[4] <= maxQuestionSeconds))
           )
         ).map(quiz => ({
           id: quiz.id,
@@ -540,7 +550,7 @@
           <div class="library-heading">
             <h2 id="quiz-picker-title" tabindex="-1">Practice solo</h2>
             <label class="timer-option">
-              <input id="timed-mode" type="checkbox" ${timed ? "checked" : ""}> ${secondsPerQuestion}-second timer
+              <input id="timed-mode" type="checkbox" ${timed ? "checked" : ""}> Use timers
             </label>
           </div>
           <div class="cards">${builtInQuizzes.map(card).join("")}</div>
@@ -555,8 +565,12 @@
       if (focus) moveTo("#welcome");
     }
 
+    function findQuiz(id) {
+      return builtInQuizzes.find(item => item.id === id) || customQuizzes.find(item => item.id === id);
+    }
+
     function startQuiz(id) {
-      const quiz = builtInQuizzes.find(item => item.id === id) || customQuizzes.find(item => item.id === id);
+      const quiz = findQuiz(id);
       if (!quiz) return;
 
       stopRoomView();
@@ -566,7 +580,9 @@
 
     function showQuestion() {
       stopClock();
-      const [prompt, options] = game.quiz.questions[game.index];
+      const [prompt, options, , , limit] = game.quiz.questions[game.index];
+      const seconds = limit ?? soloDefaultSeconds;
+      game.duration = seconds * 1000;
       const count = game.quiz.questions.length;
       app.innerHTML = `
         <section class="work-area" aria-labelledby="question-title">
@@ -575,7 +591,7 @@
             <div class="game-meta">
               <span class="pill">Question ${game.index + 1} of ${count}</span>
               <span class="pill" id="points">${game.score.toLocaleString()} pts</span>
-              ${game.timed ? `<span class="pill time-pill" role="timer" id="countdown">${secondsPerQuestion}s left</span>` : `<span class="pill">Untimed</span>`}
+              ${game.timed ? `<span class="pill time-pill" role="timer" id="countdown">${seconds}s left</span>` : `<span class="pill">Untimed</span>`}
             </div>
           </div>
           ${game.timed ? `
@@ -600,7 +616,7 @@
 
       moveTo("#question-title");
       if (game.timed) {
-        game.endsAt = performance.now() + duration;
+        game.endsAt = performance.now() + game.duration;
         timerId = window.setInterval(updateClock, 75);
       }
     }
@@ -611,7 +627,7 @@
       const bar = app.querySelector("#time-bar");
       const label = `${Math.ceil(remaining / 1000)}s left`;
       if (time.textContent !== label) time.textContent = label;
-      bar.style.transform = `scaleX(${remaining / duration})`;
+      bar.style.transform = `scaleX(${remaining / game.duration})`;
       time.classList.toggle("urgent", remaining < 5000);
       bar.classList.toggle("urgent", remaining < 5000);
       if (!remaining) submitAnswer(null);
@@ -620,6 +636,7 @@
     function submitAnswer(index) {
       if (!game || game.answers.length !== game.index) return;
 
+      const { duration } = game;
       const remaining = game.timed ? Math.max(0, game.endsAt - performance.now()) : duration;
       if (!remaining) index = null;
       stopClock();
@@ -742,7 +759,7 @@
       const list = app.querySelector("#editor-questions");
       if (list.children.length >= maxQuestions) return;
 
-      const [prompt, options, correct, explanation] = question;
+      const [prompt, options, correct, explanation, seconds] = question;
       const row = nextEditorRow++;
       list.insertAdjacentHTML("beforeend", `
         <fieldset class="editor-question">
@@ -764,6 +781,9 @@
           </fieldset>
           <label class="field">Explanation (optional)
             <textarea data-field="explanation" rows="2" maxlength="350" placeholder="Explain why the answer is correct">${escapeHtml(explanation)}</textarea>
+          </label>
+          <label class="field question-time-field">Time limit (seconds)
+            <input ${timeInputLimits} data-field="seconds" value="${seconds ?? ""}" placeholder="Use default">
           </label>
           <div class="editor-tools">
             <button type="button" class="button danger" data-action="remove-question">Remove question</button>
@@ -805,7 +825,8 @@
           row.querySelector("[data-field='prompt']").value.trim(),
           [...row.querySelectorAll("[data-field='choice']")].map(input => input.value.trim()),
           Number(row.querySelector("input[type='radio']:checked").value),
-          row.querySelector("[data-field='explanation']").value.trim()
+          row.querySelector("[data-field='explanation']").value.trim(),
+          row.querySelector("[data-field='seconds']").valueAsNumber || null
         ])
       };
 
@@ -860,11 +881,14 @@
                   ${[...builtInQuizzes, ...customQuizzes].map(quiz => `<option value="${escapeHtml(quiz.id)}">${escapeHtml(quiz.title)}</option>`).join("")}
                 </select>
               </label>
-              <label class="field">Time per question
-                <select name="seconds">
-                  ${[15, 20, 30, 45, 60].map(seconds => `<option value="${seconds}" ${seconds === 20 ? "selected" : ""}>${seconds} seconds</option>`).join("")}
-                </select>
-              </label>` : `
+              <label class="field question-time-field">Default time (seconds)
+                <input ${timeInputLimits} name="seconds" value="20" required>
+              </label>
+              <details class="question-timers">
+                <summary>Set time by question</summary>
+                <p>Enter a time from ${minQuestionSeconds} to ${maxQuestionSeconds} seconds, or leave it blank to use the room default.</p>
+                <div id="room-question-timers"></div>
+              </details>` : `
               <label class="field">Room code
                 <input class="room-pin-input" name="code" type="text" inputmode="numeric" autocomplete="off" maxlength="12" required value="${escapeHtml(code)}" placeholder="123456">
               </label>
@@ -878,7 +902,17 @@
             </div>
           </form>
         </section>`;
+      if (hosting) renderRoomTimers(app.querySelector("#room-form"));
       moveTo("#room-heading");
+    }
+
+    function renderRoomTimers(form) {
+      const quiz = findQuiz(form.elements.quiz.value);
+      form.querySelector("#room-question-timers").innerHTML = quiz.questions.map((question, index) => `
+        <label class="field question-timer-row">
+          <span>${index + 1}. ${escapeHtml(question[0])}</span>
+          <input ${timeInputLimits} name="question-seconds" value="${question[4] ?? ""}" placeholder="Default">
+        </label>`).join("");
     }
 
     async function roomRequest(path, token, data) {
@@ -917,7 +951,9 @@
       try {
         let result;
         if (setup.role === "host") {
-          const quiz = [...builtInQuizzes, ...customQuizzes].find(item => item.id === fields.get("quiz"));
+          const { title, questions } = findQuiz(fields.get("quiz"));
+          const times = fields.getAll("question-seconds");
+          const quiz = { title, questions: questions.map((question, index) => [...question.slice(0, 4), Number(times[index]) || null]) };
           result = await roomRequest("", setup.token, { quiz, seconds: Number(fields.get("seconds")) });
         } else {
           const code = fields.get("code").replace(/[\s-]/g, "");
@@ -1245,8 +1281,15 @@
     });
 
     app.addEventListener("change", event => {
-      if (event.target.id === "timed-mode") timed = event.target.checked;
+      const input = event.target;
+      if (input.id === "timed-mode") timed = input.checked;
+      if (input.name === "quiz" && input.form?.id === "room-form") renderRoomTimers(input.form);
     });
+
+    app.addEventListener("invalid", event => {
+      const details = event.target.closest(".question-timers");
+      if (details) details.open = true;
+    }, true);
 
     app.addEventListener("submit", event => {
       if (event.target.id === "quiz-form") {
