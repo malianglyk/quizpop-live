@@ -10,6 +10,8 @@ With Node.js 24 installed, run `node dev.mjs` from this directory and open [Quiz
 2. In a second tab, choose **Join a quiz** and enter the six-digit code and a nickname.
 3. In the host tab, start the quiz. The host advances from each answer reveal to the next question or the final scores.
 
+Set a time limit of 5 to 300 seconds on any question in the quiz builder. Before hosting, use **Set time by question** to review or change the limits for that room, including for the sample quizzes. Blank limits use the room default in live play or 15 seconds in timed solo play.
+
 Players can join while the lobby is open. A room supports up to 60 participants and its code expires after four hours. Use **Resume room** in the same tab after a refresh.
 
 ## Deployment

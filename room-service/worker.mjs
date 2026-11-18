@@ -1,7 +1,8 @@
 const roomLifetime = 4 * 60 * 60 * 1000;
 const capacity = 60;
 const maxBodyBytes = 64 * 1024;
-const durations = new Set([15, 20, 30, 45, 60]);
+const minQuestionSeconds = 5;
+const maxQuestionSeconds = 300;
 const pagesOrigin = "https://malianglyk.github.io";
 
 class ApiError extends Error {
@@ -69,6 +70,10 @@ function textField(value, max, required = true) {
   return text;
 }
 
+function validQuestionTime(seconds) {
+  return Number.isInteger(seconds) && seconds >= minQuestionSeconds && seconds <= maxQuestionSeconds;
+}
+
 function validateQuiz(input) {
   if (!input || !Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 20) {
     throw new ApiError(400, "Choose a quiz with 1 to 20 questions.");
@@ -80,11 +85,16 @@ function validateQuiz(input) {
           !Number.isInteger(question[2]) || question[2] < 0 || question[2] > 3) {
         throw new ApiError(400, "Each question needs four choices and one correct answer.");
       }
+      const seconds = question[4] ?? null;
+      if (seconds !== null && !validQuestionTime(seconds)) {
+        throw new ApiError(400, `Each question’s time limit must be a whole number from ${minQuestionSeconds} to ${maxQuestionSeconds} seconds.`);
+      }
       return [
         textField(question[0], 220),
         question[1].map(option => textField(option, 120)),
         question[2],
-        textField(question[3], 350, false)
+        textField(question[3], 350, false),
+        seconds
       ];
     })
   };
@@ -94,9 +104,15 @@ function phaseAt(room, now) {
   return room.phase === "question" && now >= room.deadline ? "reveal" : room.phase;
 }
 
+function questionSeconds(room, question) {
+  return question[4] ?? room.seconds;
+}
+
 async function createRoom(db, hostKey, data) {
   const quiz = validateQuiz(data.quiz);
-  if (!durations.has(data.seconds)) throw new ApiError(400, "Choose a time limit from the list.");
+  if (!validQuestionTime(data.seconds)) {
+    throw new ApiError(400, `Set a default time limit from ${minQuestionSeconds} to ${maxQuestionSeconds} seconds.`);
+  }
   const now = Date.now();
   await change(db, "DELETE FROM rooms WHERE expires_at <= ?", now);
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -150,7 +166,7 @@ async function roomState(db, room, role, key, nickname) {
     phase,
     role,
     nickname,
-    seconds: room.seconds,
+    seconds: questionSeconds(room, quiz.questions[room.question_index]),
     deadline: room.deadline,
     serverTime: now
   };
@@ -212,6 +228,7 @@ async function advanceRoom(db, room, data) {
   if (data.phase !== phase || data.index !== room.question_index) {
     throw new ApiError(409, "The room changed. Check the current question and try again.");
   }
+  const { questions } = JSON.parse(room.quiz);
   let nextPhase;
   let nextIndex = room.question_index;
   let deadline = 0;
@@ -220,8 +237,7 @@ async function advanceRoom(db, room, data) {
   } else if (phase === "question") {
     nextPhase = "reveal";
   } else if (phase === "reveal") {
-    const questionCount = JSON.parse(room.quiz).questions.length;
-    if (nextIndex + 1 < questionCount) {
+    if (nextIndex + 1 < questions.length) {
       nextIndex++;
       nextPhase = "question";
     } else {
@@ -230,7 +246,7 @@ async function advanceRoom(db, room, data) {
   } else {
     throw new ApiError(409, "This quiz is complete.");
   }
-  if (nextPhase === "question") deadline = now + room.seconds * 1000;
+  if (nextPhase === "question") deadline = now + questionSeconds(room, questions[nextIndex]) * 1000;
   const changed = await change(db, `
     UPDATE rooms SET phase = ?, question_index = ?, deadline = ?
     WHERE code = ? AND phase = ? AND question_index = ? AND deadline = ? AND expires_at > ?
@@ -248,9 +264,10 @@ async function submitAnswer(db, room, key, data, receivedAt) {
   if (phaseAt(room, receivedAt) !== "question" || index !== room.question_index) {
     throw new ApiError(409, "This question has closed.");
   }
-  const answer = JSON.parse(room.quiz).questions[index][2];
-  const remaining = Math.min(room.seconds * 1000, room.deadline - receivedAt);
-  const points = answer === choice ? 600 + Math.round(400 * remaining / (room.seconds * 1000)) : 0;
+  const question = JSON.parse(room.quiz).questions[index];
+  const duration = questionSeconds(room, question) * 1000;
+  const remaining = Math.min(duration, room.deadline - receivedAt);
+  const points = question[2] === choice ? 600 + Math.round(400 * remaining / duration) : 0;
   const inserted = await change(db, `
     INSERT OR IGNORE INTO answers (room_code, player_key, question_index, choice, points)
     SELECT code, ?, ?, ?, ?
