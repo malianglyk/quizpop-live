@@ -1,6 +1,9 @@
 const roomLifetime = 4 * 60 * 60 * 1000;
 const capacity = 60;
 const maxBodyBytes = 64 * 1024;
+const maxRoomBytes = 2 * 1024 * 1024;
+const maxImageLength = 23 + 4 * Math.ceil((64 * 1024) / 3);
+const imagePattern = /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/;
 const minQuestionSeconds = 5;
 const maxQuestionSeconds = 300;
 const pagesOrigin = "https://malianglyk.github.io";
@@ -26,7 +29,7 @@ async function change(db, sql, ...values) {
   return meta.changes;
 }
 
-async function readJson(request) {
+async function readJson(request, limit = maxBodyBytes) {
   const reader = request.body?.getReader();
   if (!reader) throw new ApiError(400, "Send the room details.");
   const decoder = new TextDecoder();
@@ -37,7 +40,7 @@ async function readJson(request) {
       const { done, value } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > maxBodyBytes) {
+      if (bytes > limit) {
         await reader.cancel();
         throw new ApiError(413, "This request is too large.");
       }
@@ -78,9 +81,10 @@ function validateQuiz(input) {
   if (!input || !Array.isArray(input.questions) || input.questions.length < 1 || input.questions.length > 20) {
     throw new ApiError(400, "Choose a quiz with 1 to 20 questions.");
   }
-  return {
+  const images = [];
+  const quiz = {
     title: textField(input.title, 70),
-    questions: input.questions.map(question => {
+    questions: input.questions.map((question, index) => {
       if (!Array.isArray(question) || !Array.isArray(question[1]) || question[1].length !== 4 ||
           !Number.isInteger(question[2]) || question[2] < 0 || question[2] > 3) {
         throw new ApiError(400, "Each question needs four choices and one correct answer.");
@@ -89,15 +93,24 @@ function validateQuiz(input) {
       if (seconds !== null && !validQuestionTime(seconds)) {
         throw new ApiError(400, `Each question’s time limit must be a whole number from ${minQuestionSeconds} to ${maxQuestionSeconds} seconds.`);
       }
+      const image = question[5] ?? null;
+      if (image !== null) {
+        if (typeof image !== "string" || image.length > maxImageLength || !imagePattern.test(image)) {
+          throw new ApiError(400, "Upload the question image again in the quiz builder.");
+        }
+        images.push({ index, image });
+      }
       return [
         textField(question[0], 220),
         question[1].map(option => textField(option, 120)),
         question[2],
         textField(question[3], 350, false),
-        seconds
+        seconds,
+        image !== null
       ];
     })
   };
+  return { quiz, images };
 }
 
 function phaseAt(room, now) {
@@ -109,20 +122,27 @@ function questionSeconds(room, question) {
 }
 
 async function createRoom(db, hostKey, data) {
-  const quiz = validateQuiz(data.quiz);
+  const { quiz, images } = validateQuiz(data.quiz);
   if (!validQuestionTime(data.seconds)) {
     throw new ApiError(400, `Set a default time limit from ${minQuestionSeconds} to ${maxQuestionSeconds} seconds.`);
   }
   const now = Date.now();
   await change(db, "DELETE FROM rooms WHERE expires_at <= ?", now);
+  const expires = now + roomLifetime;
+  const savedQuiz = JSON.stringify(quiz);
   for (let attempt = 0; attempt < 6; attempt++) {
     const random = crypto.getRandomValues(new Uint32Array(1))[0];
     const code = String(100000 + random % 900000);
-    const inserted = await change(db, `
+    const insertRoom = db.prepare(`
       INSERT OR IGNORE INTO rooms (code, host_key, quiz, seconds, expires_at)
       VALUES (?, ?, ?, ?, ?)
-    `, code, hostKey, JSON.stringify(quiz), data.seconds, now + roomLifetime);
-    if (inserted) return { code };
+    `).bind(code, hostKey, savedQuiz, data.seconds, expires);
+    const assets = images.map(({ index, image }) => db.prepare(`
+      INSERT OR IGNORE INTO room_images (room_code, question_index, source)
+      SELECT code, ?, ? FROM rooms WHERE code = ? AND host_key = ? AND expires_at = ?
+    `).bind(index, image, code, hostKey, expires));
+    const result = assets.length ? (await db.batch([insertRoom, ...assets]))[0] : await insertRoom.run();
+    if (result.meta.changes) return { code };
     const existing = await select(db, "SELECT code FROM rooms WHERE host_key = ?", hostKey);
     if (existing) return { code: existing.code };
   }
@@ -164,6 +184,7 @@ async function roomState(db, room, role, key, nickname) {
     index: room.question_index,
     total: quiz.questions.length,
     phase,
+    ranking: !!room.show_ranking,
     role,
     nickname,
     seconds: questionSeconds(room, quiz.questions[room.question_index]),
@@ -179,11 +200,28 @@ async function roomState(db, room, role, key, nickname) {
   }
 
   if (phase === "question" || phase === "reveal") {
-    const [prompt, options, correct, explanation] = quiz.questions[room.question_index];
-    state.question = { prompt, options };
+    const [prompt, options, correct, explanation, , hasImage] = quiz.questions[room.question_index];
+    state.question = { prompt, options, hasImage: !!hasImage };
     if (phase === "reveal") {
       state.question.correct = correct;
       state.question.explanation = explanation;
+      if (!state.ranking) {
+        const responses = await list(db, `
+          SELECT players.nickname, answers.choice FROM players LEFT JOIN answers
+          ON answers.room_code = players.room_code AND answers.player_key = players.player_key
+            AND answers.question_index = ?
+          WHERE players.room_code = ?
+          ORDER BY players.nickname COLLATE NOCASE, players.player_key
+        `, room.question_index, room.code);
+        const counts = [0, 0, 0, 0];
+        let unanswered = 0;
+        for (const { choice } of responses) {
+          if (choice === null) unanswered++;
+          else counts[choice]++;
+        }
+        state.distribution = { counts, unanswered };
+        if (role === "host") state.responses = responses;
+      }
     }
     if (role === "player") {
       const answer = await select(db, `
@@ -192,7 +230,7 @@ async function roomState(db, room, role, key, nickname) {
       `, room.code, key, room.question_index);
       state.choice = answer?.choice ?? null;
       if (phase === "reveal") state.points = answer?.points ?? 0;
-    } else {
+    } else if (phase === "question") {
       const counts = await select(db, `
         SELECT COUNT(*) AS playerCount,
           (SELECT COUNT(*) FROM answers WHERE room_code = ? AND question_index = ?) AS answerCount
@@ -205,19 +243,28 @@ async function roomState(db, room, role, key, nickname) {
 
   if (phase === "reveal" || phase === "finished") {
     const scores = await list(db, `
-      SELECT players.nickname, players.player_key, COALESCE(SUM(answers.points), 0) AS score
-      FROM players LEFT JOIN answers
-        ON answers.room_code = players.room_code AND answers.player_key = players.player_key
-        AND answers.question_index <= ?
-      WHERE players.room_code = ?
-      GROUP BY players.player_key
-      ORDER BY score DESC, players.nickname COLLATE NOCASE, players.player_key
-    `, room.question_index, room.code);
-    state.leaderboard = scores.map(player => ({
+      WITH totals AS (
+        SELECT players.nickname, players.player_key, COALESCE(SUM(answers.points), 0) AS score,
+          SUM(CASE WHEN answers.question_index < ? THEN answers.points ELSE 0 END) AS previous_score
+        FROM players LEFT JOIN answers
+          ON answers.room_code = players.room_code AND answers.player_key = players.player_key
+          AND answers.question_index <= ?
+        WHERE players.room_code = ?
+        GROUP BY players.player_key
+      )
+      SELECT nickname, player_key, score,
+        ROW_NUMBER() OVER (ORDER BY previous_score DESC, nickname COLLATE NOCASE, player_key) AS previous_rank
+      FROM totals ORDER BY score DESC, nickname COLLATE NOCASE, player_key
+    `, room.question_index, room.question_index, room.code);
+    const ranked = scores.map((player, index) => ({
       nickname: player.nickname,
       score: player.score,
+      rank: index + 1,
+      movement: room.question_index ? player.previous_rank - (index + 1) : null,
       you: role === "player" && player.player_key === key
     }));
+    state.leaderboard = ranked.slice(0, 5);
+    if (role === "player") state.yourRank = ranked.find(player => player.you)?.rank;
   }
   return state;
 }
@@ -225,19 +272,25 @@ async function roomState(db, room, role, key, nickname) {
 async function advanceRoom(db, room, data) {
   const now = Date.now();
   const phase = phaseAt(room, now);
-  if (data.phase !== phase || data.index !== room.question_index) {
+  const ranking = !!room.show_ranking;
+  if (data.phase !== phase || data.index !== room.question_index ||
+      (typeof data.ranking === "boolean" && data.ranking !== ranking)) {
     throw new ApiError(409, "The room changed. Check the current question and try again.");
   }
   const { questions } = JSON.parse(room.quiz);
   let nextPhase;
   let nextIndex = room.question_index;
   let deadline = 0;
+  let nextRanking = 0;
   if (phase === "lobby") {
     nextPhase = "question";
   } else if (phase === "question") {
     nextPhase = "reveal";
   } else if (phase === "reveal") {
-    if (nextIndex + 1 < questions.length) {
+    if (data.ranking === false) {
+      nextPhase = "reveal";
+      nextRanking = 1;
+    } else if (nextIndex + 1 < questions.length) {
       nextIndex++;
       nextPhase = "question";
     } else {
@@ -248,10 +301,10 @@ async function advanceRoom(db, room, data) {
   }
   if (nextPhase === "question") deadline = now + questionSeconds(room, questions[nextIndex]) * 1000;
   const changed = await change(db, `
-    UPDATE rooms SET phase = ?, question_index = ?, deadline = ?
-    WHERE code = ? AND phase = ? AND question_index = ? AND deadline = ? AND expires_at > ?
+    UPDATE rooms SET phase = ?, question_index = ?, deadline = ?, show_ranking = ?
+    WHERE code = ? AND phase = ? AND question_index = ? AND deadline = ? AND show_ranking = ? AND expires_at > ?
       AND EXISTS (SELECT 1 FROM players WHERE room_code = rooms.code)
-  `, nextPhase, nextIndex, deadline, room.code, room.phase, room.question_index, room.deadline, now);
+  `, nextPhase, nextIndex, deadline, nextRanking, room.code, room.phase, room.question_index, room.deadline, room.show_ranking, now);
   if (!changed) throw new ApiError(409, "Wait for a player to join or refresh the room and try again.");
   return { updated: true };
 }
@@ -291,10 +344,11 @@ async function route(request, db, path, receivedAt) {
     return { ok: true };
   }
   if (path === "/api/rooms" && request.method === "POST") {
-    return createRoom(db, await getKey(request), await readJson(request));
+    return createRoom(db, await getKey(request), await readJson(request, maxRoomBytes));
   }
-  const match = /^\/api\/rooms\/([0-9]{6})(?:\/(join|advance|answer))?$/.exec(path);
-  if (!match || request.method !== (match[2] ? "POST" : "GET")) {
+  const match = /^\/api\/rooms\/([0-9]{6})(?:\/(join|advance|answer|image))?$/.exec(path);
+  const method = match?.[2] && match[2] !== "image" ? "POST" : "GET";
+  if (!match || request.method !== method) {
     throw new ApiError(404, "This room action is unavailable.");
   }
   const [, code, action] = match;
@@ -307,6 +361,14 @@ async function route(request, db, path, receivedAt) {
   const player = isHost ? null : await select(db, "SELECT nickname FROM players WHERE room_code = ? AND player_key = ?", code, key);
   if (!isHost && !player) throw new ApiError(401, "Join this room with the code and a nickname first.");
   if (!action) return roomState(db, room, isHost ? "host" : "player", key, player?.nickname ?? null);
+  if (action === "image") {
+    const index = new URL(request.url).searchParams.get("index");
+    if (index === String(room.question_index) && (room.phase === "question" || room.phase === "reveal")) {
+      const asset = await select(db, "SELECT source FROM room_images WHERE room_code = ? AND question_index = ?", code, room.question_index);
+      if (asset) return { image: asset.source };
+    }
+    throw new ApiError(404, "No image for this question.");
+  }
   if (action === "advance" && isHost) return advanceRoom(db, room, await readJson(request));
   if (action === "answer" && player) return submitAnswer(db, room, key, await readJson(request), receivedAt);
   throw new ApiError(403, "Your role cannot perform that room action.");

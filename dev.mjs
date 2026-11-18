@@ -1,12 +1,15 @@
 import { createServer } from "node:http";
-import { createReadStream, readFileSync } from "node:fs";
+import { createReadStream, readdirSync, readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import worker from "./room-service/worker.mjs";
 
 const database = new DatabaseSync(":memory:");
 database.exec("PRAGMA foreign_keys = ON");
-database.exec(readFileSync(new URL("./room-service/drizzle/0000_rooms.sql", import.meta.url), "utf8"));
+const migrations = new URL("./room-service/drizzle/", import.meta.url);
+for (const file of readdirSync(migrations).filter(name => name.endsWith(".sql")).sort()) {
+  database.exec(readFileSync(new URL(file, migrations), "utf8"));
+}
 const DB = {
   prepare(sql) {
     const statement = database.prepare(sql);
@@ -19,6 +22,17 @@ const DB = {
         };
       }
     };
+  },
+  batch(statements) {
+    database.exec("BEGIN");
+    try {
+      const results = statements.map(statement => statement.run());
+      database.exec("COMMIT");
+      return results;
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
   }
 };
 
