@@ -354,6 +354,43 @@
     .room-status { margin-top: 12px; color: var(--muted); min-height: 1.5em; line-height: 1.5; }
     .room-status:empty { display: none; }
 
+    @media (prefers-reduced-motion: no-preference) {
+      .hero-intro .hero-art {
+        animation: artwork-arrive 640ms cubic-bezier(.22, .77, .26, 1) both;
+      }
+
+      .room-transition .distribution-bar {
+        transform-origin: center bottom;
+        animation: answer-bar-grow 460ms cubic-bezier(.19, .72, .26, 1) both;
+        animation-delay: calc(60ms * var(--stagger));
+      }
+
+      .room-transition .leaderboard li {
+        animation: rank-settle 390ms cubic-bezier(.2, .75, .28, 1) both;
+        animation-delay: calc(48ms * var(--stagger));
+      }
+
+      @keyframes artwork-arrive {
+        from { opacity: .35; transform: translateY(16px) scale(.94) rotate(-5deg); }
+        to { opacity: 1; transform: none; }
+      }
+
+      @keyframes answer-bar-grow {
+        from { transform: scaleY(.04); }
+        to { transform: scaleY(1); }
+      }
+
+      @keyframes rank-settle {
+        from { opacity: .45; transform: translateY(var(--rank-offset)); }
+        to { opacity: 1; transform: none; }
+      }
+    }
+
+    @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+      .quiz-card { transition: transform 180ms ease; }
+      .quiz-card:hover { transform: translateY(-3px); }
+    }
+
     @media (max-width: 830px) {
       .page-width { width: calc(100% - 40px); }
       .hero-copy { padding-left: 33px; }
@@ -1170,11 +1207,12 @@
           ${state.phase === "finished" ? "<h2>Top five</h2>" : ""}
           <ol>${state.leaderboard.map((player, index) => {
             const delta = player.movement;
+            const offset = Math.max(-28, Math.min(28, (delta ?? 0) * 14)) || 8;
             const direction = delta > 0 ? "up" : "down";
             const shift = delta ? `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)}` : delta == null ? "New" : "—";
             const shiftLabel = delta ? `${direction} ${Math.abs(delta)} ${Math.abs(delta) === 1 ? "place" : "places"}` : delta == null ? "First ranking" : "No change";
             return `
-              <li class="${player.you ? "you" : ""}">
+              <li class="${player.you ? "you" : ""}" style="--stagger:${index};--rank-offset:${offset}px">
                 <span class="rank">${player.rank ?? index + 1}</span>
                 <span>${escapeHtml(player.nickname)}${player.you ? " (you)" : ""}</span>
                 <strong>${player.score.toLocaleString()} pts</strong>
@@ -1196,7 +1234,7 @@
           <h2>How the room answered</h2>
           <div class="distribution-bars">
             ${counts.map((count, index) => `
-              <div class="distribution-cell" style="--bar:${colors[index]};--bar-height:${Math.max(3, 82 * count / peak)}%">
+              <div class="distribution-cell" style="--bar:${colors[index]};--stagger:${index};--bar-height:${Math.max(3, 82 * count / peak)}%">
                 <div class="distribution-plot">
                   <span class="distribution-count">${count}<span class="visually-hidden"> responses for</span></span>
                   <span class="distribution-bar" aria-hidden="true"></span>
@@ -1269,7 +1307,7 @@
       const status = app.querySelector("#room-status")?.textContent || "";
       const inRound = state.phase === "question" || state.phase === "reveal";
       app.innerHTML = `
-        <section class="work-area" aria-labelledby="room-heading">
+        <section class="work-area${newScreen ? " room-transition" : ""}" aria-labelledby="room-heading">
           <div class="screen-head">
             <button type="button" class="button outline" data-action="home"><span aria-hidden="true">←</span> Back to quizzes</button>
             <div class="game-meta">
@@ -1496,7 +1534,10 @@
 
     const joinCode = new URLSearchParams(location.search).get("join");
     if (/^[0-9]{6}$/.test(joinCode)) showRoomSetup("join", joinCode);
-    else showHome("", false);
+    else {
+      showHome("", false);
+      app.querySelector(".hero").classList.add("hero-intro");
+    }
   </script>
 </body>
 </html>
