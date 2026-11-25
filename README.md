@@ -23,3 +23,9 @@ GitHub Pages serves the static files in `dist/`. A separate Cloudflare Worker wi
 To deploy the room service, apply the SQL migration in `room-service/drizzle/` to D1, bind the database as `DB`, and deploy `room-service/worker.mjs`. Run `node room-service/build.mjs` to produce the Worker entrypoint used by Sites.
 
 Custom quizzes are saved in the browser. When one is hosted, the room service stores a copy for that session. Players join with a nickname and room code.
+
+## Question library
+
+The 14-question classical Chinese collection covers 得道多助，失道寡助. Open **Question library** to search, create a question, or select up to 20 questions for a new quiz. Quiz questions are copied to the library on save. Use **Sync saved quizzes** to add older quizzes from this browser.
+
+Your saved library questions are private to this browser. Set QUIZPOP_DB_PATH to a SQLite file before running the local server if you want it to remember questions after a restart.

@@ -4,11 +4,22 @@ import { Readable } from "node:stream";
 import { DatabaseSync } from "node:sqlite";
 import worker from "./room-service/worker.mjs";
 
-const database = new DatabaseSync(":memory:");
+const database = new DatabaseSync(process.env.QUIZPOP_DB_PATH || ":memory:");
 database.exec("PRAGMA foreign_keys = ON");
 const migrations = new URL("./room-service/drizzle/", import.meta.url);
-for (const file of readdirSync(migrations).filter(name => name.endsWith(".sql")).sort()) {
-  database.exec(readFileSync(new URL(file, migrations), "utf8"));
+const migrationFiles = readdirSync(migrations).filter(name => name.endsWith(".sql")).sort();
+const applied = database.prepare("PRAGMA user_version").get().user_version;
+for (const [index, file] of migrationFiles.entries()) {
+  if (index < applied) continue;
+  database.exec("BEGIN");
+  try {
+    database.exec(readFileSync(new URL(file, migrations), "utf8"));
+    database.exec(`PRAGMA user_version = ${index + 1}`);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 const DB = {
   prepare(sql) {

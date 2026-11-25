@@ -338,7 +338,63 @@ async function submitAnswer(db, room, key, data, receivedAt) {
   return { accepted: true };
 }
 
+const libraryPageSize = 16;
+
+function librarySearchText(value) {
+  return value.normalize("NFKC").toLowerCase().trim();
+}
+
+async function searchLibrary(db, owner, params) {
+  const terms = librarySearchText((params.get("q") || "").slice(0, 140)).split(/\s+/).filter(Boolean).slice(0, 8);
+  const requested = Number(params.get("page"));
+  const page = Number.isSafeInteger(requested) ? Math.max(1, Math.min(10000, requested)) : 1;
+  const matches = terms.map(() => "AND instr(search_text, ?) > 0").join(" ");
+  const rows = await list(db, `
+    SELECT owner_key = '' AS sample, collection_id, position, collection_title, question
+    FROM library_questions
+    WHERE owner_key IN ('', ?) ${matches}
+    ORDER BY sample DESC, updated_at DESC, collection_id, position
+    LIMIT ? OFFSET ?
+  `, owner, ...terms, libraryPageSize + 1, (page - 1) * libraryPageSize);
+  return {
+    page,
+    hasNext: rows.length > libraryPageSize,
+    questions: rows.slice(0, libraryPageSize).map(row => ({
+      id: (row.sample ? "sample:" : "mine:") + row.collection_id + ":" + row.position,
+      title: row.collection_title,
+      question: JSON.parse(row.question)
+    }))
+  };
+}
+
+async function saveToLibrary(db, owner, input) {
+  if (typeof input.id !== "string" || !/^custom-[a-z0-9-]{1,90}$/i.test(input.id)) {
+    throw new ApiError(400, "Invalid question collection.");
+  }
+  const { quiz, images } = validateQuiz(input);
+  const imagesByIndex = new Map(images.map(({ index, image }) => [index, image]));
+  const now = Date.now();
+  const replaceCollection = db.prepare("DELETE FROM library_questions WHERE owner_key = ? AND collection_id = ?")
+    .bind(owner, input.id);
+  const rows = quiz.questions.map((question, position) => {
+    const [prompt, options, correct, explanation, seconds] = question;
+    const data = [prompt, options, correct, explanation, seconds ?? 20, imagesByIndex.get(position) ?? null];
+    const search = librarySearchText([quiz.title, prompt, ...options, explanation].join(" "));
+    return db.prepare(`
+      INSERT INTO library_questions (owner_key, collection_id, position, collection_title, question, search_text, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(owner, input.id, position, quiz.title, JSON.stringify(data), search, now);
+  });
+  await db.batch([replaceCollection, ...rows]);
+  return { saved: rows.length };
+}
+
 async function route(request, db, path, receivedAt) {
+  if (path === "/api/library" && (request.method === "GET" || request.method === "POST")) {
+    const owner = await getKey(request);
+    if (request.method === "POST") return saveToLibrary(db, owner, await readJson(request, maxRoomBytes));
+    return searchLibrary(db, owner, new URL(request.url).searchParams);
+  }
   if (path === "/api/health" && request.method === "GET") {
     await select(db, "SELECT code FROM rooms LIMIT 1");
     return { ok: true };

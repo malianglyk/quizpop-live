@@ -354,6 +354,20 @@
     .room-status { margin-top: 12px; color: var(--muted); min-height: 1.5em; line-height: 1.5; }
     .room-status:empty { display: none; }
 
+    .library-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+    .library-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+    #library-selected { color: var(--muted); margin-right: auto; }
+    .library-results { list-style: none; padding: 0; display: grid; gap: 10px; margin-top: 14px; }
+    .library-record summary { cursor: pointer; font-weight: 760; overflow-wrap: anywhere; }
+    .library-record li + li { margin-top: 4px; }
+    .library-record p { overflow-wrap: anywhere; }
+    .library-record-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: var(--muted); font-size: .9rem; }
+    .library-record-footer label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); cursor: pointer; }
+    .library-record-footer input { accent-color: var(--purple); }
+    .library-pages { margin-top: 18px; }
+    .library-mobile { display: none; }
+    @media (max-width: 620px) { .library-mobile { display: inline-flex; } }
+
     @media (prefers-reduced-motion: no-preference) {
       .hero-intro .hero-art {
         animation: artwork-arrive 640ms cubic-bezier(.22, .77, .26, 1) both;
@@ -445,7 +459,7 @@
         <span class="brand-mark" aria-hidden="true">✦</span>QuizPop
       </button>
       <nav aria-label="QuizPop">
-        <button type="button" class="button browse" data-action="browse">Solo quizzes</button>
+        <button type="button" class="button browse" data-action="library">Question library</button>
         <button type="button" class="button outline" data-action="build"><span class="icon-plus" aria-hidden="true">+</span> Create a quiz</button>
       </nav>
     </div>
@@ -460,36 +474,23 @@
     const defaultQuestionSeconds = 20;
     const builtInQuizzes = [
       {
-        id: "quick", theme: "mix", icon: "✦", title: "Quick Mix",
-        description: "A little bit of everything.",
+        id: "mencius", theme: "words", icon: "文", title: "《得道多助，失道寡助》",
+        description: "孟子文言文阅读 · 词义、翻译、论证与主旨",
         questions: [
-          ["Which ocean is the largest?", ["Atlantic Ocean", "Pacific Ocean", "Indian Ocean", "Arctic Ocean"], 1, "The Pacific covers more of Earth’s surface than any other ocean."],
-          ["How many sides does a hexagon have?", ["Five", "Seven", "Eight", "Six"], 3, "The prefix ‘hexa-’ means six."],
-          ["Which instrument usually has 88 keys?", ["Piano", "Violin", "Trumpet", "Flute"], 0, "A standard modern piano has 52 white keys and 36 black keys."],
-          ["Which country is home to the Great Pyramid of Giza?", ["Greece", "Mexico", "Egypt", "India"], 2, "The Great Pyramid stands on the Giza Plateau near Cairo."],
-          ["What is the main ingredient in guacamole?", ["Cucumber", "Avocado", "Lettuce", "Spinach"], 1, "Guacamole is made with mashed avocado."]
-        ]
-      },
-      {
-        id: "science", theme: "science", icon: "⚛", title: "Science Sparks",
-        description: "Space, matter, and the natural world.",
-        questions: [
-          ["Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], 0, "Iron oxide in the dust gives Mars its reddish color."],
-          ["What gas do plants take in for photosynthesis?", ["Oxygen", "Helium", "Hydrogen", "Carbon dioxide"], 3, "Plants use carbon dioxide and water, with energy from light, to make sugars."],
-          ["What is the name for water turning from a liquid into a gas at its surface?", ["Condensation", "Evaporation", "Precipitation", "Freezing"], 1, "During evaporation, water molecules escape from the surface into the air."],
-          ["Which part of the body pumps blood?", ["Lungs", "Stomach", "Heart", "Brain"], 2, "The heart contracts to move blood through the circulatory system."],
-          ["At standard atmospheric pressure, at what temperature does pure water freeze?", ["0°C", "10°C", "32°C", "100°C"], 0, "Pure water freezes at 0°C, which is 32°F."]
-        ]
-      },
-      {
-        id: "words", theme: "words", icon: "Aa", title: "Word Play",
-        description: "Find the meaning, rhyme, or missing word.",
-        questions: [
-          ["Which word means almost the same as ‘rapid’?", ["Quiet", "Careful", "Fast", "Late"], 2, "‘Rapid’ describes something that moves or happens quickly."],
-          ["Which word rhymes with ‘bright’?", ["Brought", "Flight", "Brick", "Bread"], 1, "‘Bright’ and ‘flight’ end with the same sound."],
-          ["Which word is the past tense of ‘bring’?", ["Bringed", "Bringing", "Brings", "Brought"], 3, "‘Bring’ has an irregular past tense, ‘brought.’"],
-          ["Which word is an adjective in ‘The curious fox ran’?", ["Curious", "Fox", "Ran", "The"], 0, "‘Curious’ describes the fox, so it is an adjective."],
-          ["Which word is spelled correctly?", ["Neccessary", "Necesary", "Necessary", "Neccesary"], 2, "‘Necessary’ is spelled with one c and two s’s."]
+          ["本文开头提出了怎样的观点？",["天时比地利重要，地利比人和重要","天时不如地利，地利不如人和","有地利便一定能够取胜","战争的胜负只取决于兵器"],1,"首句层层比较天时、地利与人和，确立了人和最重要的观点。",20],
+          ["“三里之城，七里之郭”中的“郭”指什么？",["护城河","内城的城墙","外城","驻军的营地"],2,"古代城邑往往有内外两重城墙，内为城，外为郭。",20],
+          ["“环而攻之而不胜”的例子说明了什么？",["即使占有天时，也可能因对方占有地利而不能取胜","只要围城，攻方就一定能取胜","防守一方的胜利完全依靠人和","城墙低矮是进攻失败的原因"],0,"文中指出围攻的一方必有得天时的机会，却仍未取胜，借此说明天时不如地利。",30],
+          ["“城非不高也，池非不深也”中的“池”指什么？",["水井","城内的池塘","湖泊","护城河"],3,"这里的“池”是城墙外用来防守的护城河。",20],
+          ["下列对“兵革非不坚利也，米粟非不多也”的理解，哪一项正确？",["士兵不强壮，粮食也不足","武器和甲胄并非不坚固锋利，粮食也并非不充足","士兵虽多，却缺少锋利的武器","兵器锋利，但战事已经耗尽粮食"],1,"“兵革”指武器和甲胄，“米粟”泛指粮食。多个双重否定强调守城条件充足。",30],
+          ["“委而去之”的意思是什么？",["接受委任，前往守城","命令士兵留在城中","放弃城池，离开那里","把城池交给盟友防守"],2,"“委”是放弃，“去”是离开。这里指守城者弃城而逃。",20],
+          ["城防坚固、武器精良、粮食充足，却仍然“委而去之”。作者借此说明什么？",["地利不如人和","天时足以弥补地利的不足","坚固的城墙会削弱战斗力","只要粮食充足就能守城"],0,"守方拥有多种有利条件却弃城，突出团结和支持比地利更重要。",25],
+          ["“域民不以封疆之界”的意思最接近哪一项？",["治理民众必须先扩张疆土","防御敌人完全依靠边界","民众只能住在边界附近","使百姓安居，不能只靠划定疆界"],3,"这句话与“固国”“威天下”并列，指出疆界等外在条件不能代替人心的支持。",30],
+          ["“域民不以……，固国不以……，威天下不以……”主要运用了哪种表达方式？",["比喻","排比","反问","夸张"],1,"三个结构相近的句子并列，从安民、固国到威天下，增强了论证的气势。",20],
+          ["文中“得道者多助”的“道”主要指什么？",["行军时选择的道路","修身时学习的知识","合乎道义的政治主张与做法","运用兵器的技巧"],2,"“得道”指施行合乎道义、能赢得人心的政治，不能理解为得到一条道路。",25],
+          ["“亲戚畔之”的“畔”在这里是什么意思？",["背叛","靠近","赞同","等待"],0,"“畔”同“叛”，这里指亲属也背离失道的人。",20],
+          ["“寡助之至，亲戚畔之；多助之至，天下顺之”写出了怎样的对比？",["山川险要与兵器锋利的对比","进攻一方与守城一方地形的对比","得天时与失天时的对比","失道者众叛亲离与得道者获得广泛支持的对比"],3,"作者把支持极少和支持极多的结果并列，具体说明得道与失道的不同后果。",25],
+          ["“故君子有不战，战必胜矣”中的“战必胜”依据是什么？",["得道者必有比对手更坚固的城池","得道者得到天下人的支持，而失道者连亲属也背离","君子总能挑选最有利的天气","得道者可以靠兵器威服天下"],1,"结尾紧承“以天下之所顺，攻亲戚之所畔”，以人心向背说明取胜的依据。",30],
+          ["下列哪一项最准确地概括了本文的论证思路？",["先叙述历史事件，再介绍守城方法","先论述治国之道，再总结地形的重要性","先提出人和最重要，再用攻守实例论证，最后推及治国与得道","先比较兵器和粮食，再主张凡事都不应交战"],2,"文章从天时、地利、人和的比较出发，用攻守实例论证，再把人和推及施政与人心向背。",35]
         ]
       }
     ].map(quiz => ({ ...quiz, questions: quiz.questions.map(questionWithTime) }));
@@ -509,6 +510,9 @@
     let game = null;
     let timerId = 0;
     let editorId = null;
+    let editorDraft;
+    let libraryKey;
+    let libraryView;
     let nextEditorRow = 0;
     let roomForm = null;
     let roomView = null;
@@ -616,6 +620,7 @@
         <section class="library" aria-labelledby="quiz-picker-title">
           <div class="library-heading">
             <h2 id="quiz-picker-title" tabindex="-1">Practice solo</h2>
+            <button type="button" class="button outline library-mobile" data-action="library">Question library</button>
             <label class="timer-option">
               <input id="timed-mode" type="checkbox" ${timed ? "checked" : ""}> Use timers
             </label>
@@ -783,41 +788,165 @@
       moveTo("#result-title");
     }
 
-    function showBuilder(id) {
+    function libraryToken() {
+      const storage = "quizpop.library.key";
+      if (libraryKey) return libraryKey;
+      try {
+        const saved = localStorage.getItem(storage);
+        if (/^[a-f0-9]{64}$/.test(saved || "")) libraryKey = saved;
+      } catch {}
+      if (!libraryKey) libraryKey = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
+      try { localStorage.setItem(storage, libraryKey); } catch {}
+      return libraryKey;
+    }
+
+    function libraryRequest(path, data) {
+      return requestApi("/api/library" + path, libraryToken(), data);
+    }
+
+    function showLibrary(notice = "") {
+      stopRoomView();
+      stopClock();
+      game = null;
+      app.innerHTML = `
+        <section class="work-area" aria-labelledby="library-title">
+          <div class="screen-head">
+            <div>
+              <h1 id="library-title" class="screen-title" tabindex="-1">Question library</h1>
+              <p class="screen-subtitle">Search the classical Chinese collection and questions saved from this browser.</p>
+            </div>
+            <button type="button" class="button primary" data-action="create-question">Create a question</button>
+          </div>
+          <form id="library-search" class="library-search">
+            <label class="field">Search questions
+              <input type="search" name="query" maxlength="140" placeholder="例如 人和、护城河、排比">
+            </label>
+            <button type="submit" class="button primary">Search</button>
+          </form>
+          <div class="library-selection">
+            <p id="library-selected" aria-live="polite"></p>
+            <button type="button" class="button outline" data-action="library-quiz" disabled>Create quiz with selected</button>
+            ${customQuizzes.length ? '<button type="button" class="button" data-action="library-sync">Sync saved quizzes</button>' : ""}
+          </div>
+          <p id="library-status" class="screen-subtitle" role="status"></p>
+          <ol id="library-results" class="library-results"></ol>
+          <div class="screen-head library-pages" id="library-pages" hidden>
+            <button type="button" class="button outline" data-action="library-page" data-step="-1">Previous</button>
+            <span id="library-page-label"></span>
+            <button type="button" class="button outline" data-action="library-page" data-step="1">Next</button>
+          </div>
+        </section>`;
+      const view = { form: app.querySelector("#library-search"), selected: new Map(), records: [], query: "", page: 1, request: 0 };
+      libraryView = view;
+      updateLibrarySelection(view);
+      void loadLibrary(view, "", 1, notice);
+      moveTo("#library-title");
+    }
+
+    function updateLibrarySelection(view) {
+      const count = view.selected.size;
+      app.querySelector("#library-selected").textContent = `${count} of ${maxQuestions} selected`;
+      app.querySelector("[data-action='library-quiz']").disabled = count === 0;
+      for (const input of app.querySelectorAll("[data-library-id]")) input.disabled = !input.checked && count >= maxQuestions;
+    }
+
+    async function loadLibrary(view, query, page, notice = "") {
+      const request = ++view.request;
+      view.query = query;
+      const status = app.querySelector("#library-status");
+      const results = app.querySelector("#library-results");
+      const pages = app.querySelector("#library-pages");
+      status.textContent = "Loading questions…";
+      results.replaceChildren();
+      pages.hidden = true;
+      try {
+        const params = new URLSearchParams({ q: query, page });
+        const data = await libraryRequest("?" + params);
+        if (!view.form.isConnected || request !== view.request) return;
+        view.page = data.page;
+        view.records = data.questions;
+        status.textContent = data.questions.length ? notice : "No questions match this search.";
+        results.innerHTML = data.questions.map(({ id, title, question }) => {
+          const [prompt, options, correct, explanation, seconds, image] = question;
+          return `
+            <li class="builder-panel library-record">
+              <details>
+                <summary>${escapeHtml(prompt)}</summary>
+                <ol type="A">${options.map((option,index) => `<li>${escapeHtml(option)}${index === correct ? ' <strong>✓ Correct</strong>' : ""}</li>`).join("")}</ol>
+                ${explanation ? `<p>${escapeHtml(explanation)}</p>` : ""}
+                ${image ? `<img class="question-image" src="${escapeHtml(image)}" alt="Image for this question" loading="lazy">` : ""}
+              </details>
+              <div class="library-record-footer">
+                <span>${escapeHtml(title)} · ${seconds}s</span>
+                <label><input type="checkbox" data-library-id="${escapeHtml(id)}" ${view.selected.has(id) ? "checked" : ""}> Select<span class="visually-hidden"> ${escapeHtml(prompt)}</span></label>
+              </div>
+            </li>`;
+        }).join("");
+        pages.hidden = data.page === 1 && !data.hasNext;
+        pages.querySelector("[data-step='-1']").disabled = data.page === 1;
+        pages.querySelector("[data-step='1']").disabled = !data.hasNext;
+        app.querySelector("#library-page-label").textContent = `Page ${data.page}`;
+        updateLibrarySelection(view);
+      } catch (error) {
+        if (view.form.isConnected && request === view.request) status.textContent = error.message;
+      }
+    }
+
+    async function syncSavedQuizzes(button) {
+      const view = libraryView;
+      button.disabled = true;
+      const status = app.querySelector("#library-status");
+      status.textContent = "Saving quiz questions to the library…";
+      let saved = 0;
+      try {
+        for (const quiz of customQuizzes) {
+          if (!view.form.isConnected) return;
+          saved += (await libraryRequest("", quiz)).saved;
+        }
+        if (view.form.isConnected) await loadLibrary(view, view.query, 1, `${saved} questions synced.`);
+      } catch (error) {
+        if (view.form.isConnected) status.textContent = `${saved} questions synced. ${error.message}`;
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
+    }
+
+    function showBuilder(id, draft = {}) {
       stopRoomView();
       stopClock();
       game = null;
       const quiz = customQuizzes.find(item => item.id === id);
       editorId = quiz?.id ?? null;
+      editorDraft = draft;
       nextEditorRow = 0;
 
       app.innerHTML = `
         <section class="work-area" aria-labelledby="builder-title">
           <div class="screen-head">
             <div>
-              <h1 id="builder-title" class="screen-title" tabindex="-1">${quiz ? "Edit quiz" : "Create a quiz"}</h1>
-              <p class="screen-subtitle">Write four choices, mark the correct answer, and set a time limit for each question. Quizzes are saved in this browser.</p>
+              <h1 id="builder-title" class="screen-title" tabindex="-1">${draft.single ? "Create a question" : quiz ? "Edit quiz" : "Create a quiz"}</h1>
+              <p class="screen-subtitle">Write four choices, mark the correct answer, and set a time limit for each question.</p>
             </div>
           </div>
           <form id="quiz-form">
             <div class="builder-panel">
-              <label class="field">Quiz title
-                <input name="title" placeholder="e.g. Friday review" maxlength="70" value="${escapeHtml(quiz?.title ?? "")}" required>
+              <label class="field">${draft.single ? "Collection title" : "Quiz title"}
+                <input name="title" placeholder="e.g. Friday review" maxlength="70" value="${escapeHtml(quiz?.title ?? draft.title ?? "")}" required>
               </label>
             </div>
             <div id="editor-questions"></div>
             <p id="editor-message" class="form-message" role="alert" hidden></p>
             <div class="builder-actions">
-              <button type="button" class="button outline" data-action="add-question"><span aria-hidden="true">+</span> Add question</button>
+              <button type="button" class="button outline" data-action="add-question" ${draft.single ? "hidden" : ""}><span aria-hidden="true">+</span> Add question</button>
               <div>
                 ${quiz ? `<button type="button" class="button danger" data-action="delete-quiz">Delete quiz</button>` : ""}
-                <button type="button" class="button" data-action="home">Cancel</button>
-                <button type="submit" class="button primary">Save quiz</button>
+                <button type="button" class="button" data-action="${draft.single ? "library" : "home"}">Cancel</button>
+                <button type="submit" class="button primary">${draft.single ? "Save question" : "Save quiz"}</button>
               </div>
             </div>
           </form>
         </section>`;
-      const questions = quiz?.questions ?? [["", ["", "", "", ""], 0, ""]];
+      const questions = quiz?.questions ?? draft.questions ?? [["", ["", "", "", ""], 0, ""]];
       questions.forEach(question => addEditorQuestion(question, false));
       moveTo("#builder-title");
     }
@@ -878,7 +1007,8 @@
       const addButton = app.querySelector("[data-action='add-question']");
       addButton.disabled = rows.length >= maxQuestions;
       addButton.lastChild.textContent = addButton.disabled ? ` ${maxQuestions}-question limit` : " Add question";
-      app.querySelector("#quiz-form button[type='submit']").disabled = rows.some(row => row.hasAttribute("data-image-loading"));
+      const form = app.querySelector("#quiz-form");
+      form.querySelector("button[type=submit]").disabled = !!form.dataset.saving || rows.some(row => row.hasAttribute("data-image-loading"));
     }
 
     function validImage(source) {
@@ -956,7 +1086,8 @@
       }
     }
 
-    function saveQuiz(form) {
+    async function saveQuiz(form) {
+      if (form.dataset.saving) return;
       const fields = form.querySelectorAll("[required]:not([type='radio'])");
       const blank = [...fields].find(field => !field.value.trim());
       if (blank) {
@@ -983,12 +1114,36 @@
         ])
       };
 
-      if (editorId) {
-        customQuizzes = customQuizzes.map(item => item.id === editorId ? quiz : item);
-      } else {
-        customQuizzes.push(quiz);
+      const single = editorDraft.single;
+      if (single) quiz.id = editorDraft.id ??= "custom-" + crypto.randomUUID();
+      form.dataset.saving = "true";
+      const submit = form.querySelector("button[type=submit]");
+      submit.disabled = true;
+
+      let localError;
+      if (!single) {
+        if (editorId) customQuizzes = customQuizzes.map(item => item.id === editorId ? quiz : item);
+        else customQuizzes.push(quiz);
+        localError = persistQuizzes();
       }
-      showHome(persistQuizzes() || `“${quiz.title}” is ready to play.`, false);
+
+      let libraryError;
+      try { await libraryRequest("", quiz); } catch (error) { libraryError = error.message; }
+      if (!form.isConnected) return;
+      delete form.dataset.saving;
+      submit.disabled = false;
+      if (single) {
+        if (libraryError) {
+          const message = app.querySelector("#editor-message");
+          message.hidden = false;
+          message.textContent = libraryError;
+        } else showLibrary("Question saved to the library.");
+        return;
+      }
+
+      const message = [localError || `“${quiz.title}” is ready to play.`];
+      if (libraryError && location.protocol !== "file:") message.push("Library sync failed. Open the quiz and save it again to retry.");
+      showHome(message.join(" "), false);
       app.querySelector("#my-quizzes-title").focus();
     }
 
@@ -1050,10 +1205,14 @@
       moveTo("#room-heading");
     }
 
-    async function roomRequest(path, token, data) {
-      if (!roomApi || location.protocol === "file:") throw new Error("Open the hosted QuizPop site or run the local server to play a live quiz.");
+    function roomRequest(path, token, data) {
+      return requestApi("/api/rooms" + path, token, data);
+    }
+
+    async function requestApi(path, token, data) {
+      if (!roomApi || location.protocol === "file:") throw new Error("Open the hosted QuizPop site or run the local server to use online features.");
       const headers = { Authorization: `Bearer ${token}` };
-      const options = { headers, cache: "no-store", signal: AbortSignal.timeout(path === "" ? 20000 : 8000) };
+      const options = { headers, cache: "no-store", signal: AbortSignal.timeout(data === undefined ? 8000 : 20000) };
       if (data !== undefined) {
         headers["Content-Type"] = "application/json";
         options.method = "POST";
@@ -1062,13 +1221,13 @@
       let response;
       let payload;
       try {
-        response = await fetch(`${roomApi}/api/rooms${path}`, options);
+        response = await fetch(`${roomApi}${path}`, options);
         payload = await response.json();
       } catch {
-        throw new Error("Couldn’t reach the room service. Check your connection and try again.");
+        throw new Error("Couldn’t reach QuizPop. Check your connection and try again.");
       }
       if (!response.ok) {
-        const error = new Error(payload.error || "The room service is unavailable. Try again.");
+        const error = new Error(payload.error || "QuizPop is unavailable. Try again.");
         error.status = response.status;
         throw error;
       }
@@ -1467,6 +1626,21 @@
             showQuestion();
           }
           break;
+        case "library":
+          showLibrary();
+          break;
+        case "create-question":
+          showBuilder(null, { single: true, title: "自编题目" });
+          break;
+        case "library-quiz":
+          showBuilder(null, { title: "题库练习", questions: [...libraryView.selected.values()].map(record => record.question) });
+          break;
+        case "library-page":
+          void loadLibrary(libraryView, libraryView.query, libraryView.page + Number(button.dataset.step));
+          break;
+        case "library-sync":
+          void syncSavedQuizzes(button);
+          break;
         case "build":
           showBuilder();
           break;
@@ -1505,13 +1679,22 @@
     app.addEventListener("change", event => {
       const input = event.target;
       if (input.id === "timed-mode") timed = input.checked;
+      if (input.dataset.libraryId) {
+        const id = input.dataset.libraryId;
+        if (input.checked) libraryView.selected.set(id, libraryView.records.find(record => record.id === id));
+        else libraryView.selected.delete(id);
+        updateLibrarySelection(libraryView);
+      }
       if (input.dataset.field === "image-file") void uploadQuestionImage(input);
     });
 
     app.addEventListener("submit", event => {
       if (event.target.id === "quiz-form") {
         event.preventDefault();
-        if (!event.target.querySelector("[data-image-loading]")) saveQuiz(event.target);
+        if (!event.target.querySelector("[data-image-loading]")) void saveQuiz(event.target);
+      } else if (event.target.id === "library-search") {
+        event.preventDefault();
+        void loadLibrary(libraryView, event.target.elements.query.value.trim(), 1);
       } else if (event.target.id === "room-form") {
         event.preventDefault();
         void submitRoomForm(event.target);
