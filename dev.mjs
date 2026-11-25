@@ -66,6 +66,15 @@ const server = createServer(async (request, response) => {
     } else if (target.pathname === "/" || target.pathname === "/index.html") {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       createReadStream(new URL("./dist/index.html", import.meta.url)).pipe(response);
+    } else if (target.pathname === "/question-import.js" || /^\/vendor\/[a-z0-9._-]+\.(?:js|gz)$/i.test(target.pathname)) {
+      const asset = new URL("./dist" + target.pathname, import.meta.url);
+      const stream = createReadStream(asset);
+      stream.once("error", () => response.writeHead(404).end());
+      stream.once("open", () => {
+        const type = target.pathname.endsWith(".js") ? "text/javascript; charset=utf-8" : "application/octet-stream";
+        response.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+        stream.pipe(response);
+      });
     } else {
       response.writeHead(404).end();
     }

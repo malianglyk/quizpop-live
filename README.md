@@ -29,3 +29,9 @@ Custom quizzes are saved in the browser. When one is hosted, the room service st
 The 14-question classical Chinese collection covers 得道多助，失道寡助. Open **Question library** to search, create a question, or select up to 20 questions for a new quiz. Quiz questions are copied to the library on save. Use **Sync saved quizzes** to add older quizzes from this browser.
 
 Your saved library questions are private to this browser. Set QUIZPOP_DB_PATH to a SQLite file before running the local server if you want it to remember questions after a restart.
+
+## Generate questions from files
+
+On the file-import branch, open **Generate from files** in the library or quiz builder. Import PowerPoint .pptx decks or JPG, PNG, and WebP photos. Save older .ppt files as .pptx first. Import supports up to 10 files, 25 MB per file and 60 MB total. A deck can contain up to 60 slides.
+
+The browser extracts slide text and recognizes printed Chinese and English in photos. It generates fill-in-the-blank multiple-choice drafts from the extracted material. Review and edit every prompt, choice, and answer in the quiz builder before saving. The original files are processed locally. [Tesseract.js](https://github.com/naptha/tesseract.js) provides OCR and [fflate](https://github.com/101arrowz/fflate) extracts the PowerPoint ZIP data. Vendored code and its license notices are in dist/vendor.
